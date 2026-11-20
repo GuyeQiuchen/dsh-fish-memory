@@ -68,6 +68,16 @@ cp -r dsh-fish-memory ~/.dsh/profiles/desktop/node_modules/
 - 不替你整理记忆，写什么、写多细，还是靠你和它
 - 同时开两个会话往里写会打架，它没有锁
 
+## 来源
+
+这个包不是从零开始的。
+
+磁盘上那套结构——`SOUL.md`、`MEMORY.md`、`BOOTSTRAP.md`、`index.md`、`log.md` 和分类目录——来自 [dsh-plugin-memory](https://github.com/LittleBlackTong/dsh-plugin-memory)（MIT，作者 LittleBlackTong）。它先把「记忆库该长什么样」立了下来。
+
+这里把实现重写了：开机注入层、家规独立预算、压缩后核对、心情、整理提醒、取原料、自动补索引、主动唤醒，都是新代码。除了沿用那套文件约定，没有逐字搬过来的文件。
+
+两边的差别在注入量：上游每轮把整套协议和索引注入进去，聊十几轮就吃掉四成上下文；这里只注入决策要用的那一小段，其余留在硬盘上按需翻。
+
 ## 隐私
 
 包里没有别人的记忆。装上去看到的一句兜底提示和几个工具，剩下的全由你本地的文件长出来。
