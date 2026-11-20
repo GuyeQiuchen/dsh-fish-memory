@@ -24,6 +24,8 @@ $profileDir = Join-Path $userHome ('.dsh\profiles\' + $Profile)
 $pkgPath = Join-Path $profileDir 'package.json'
 $patchPath = Join-Path $profileDir 'cordis.patch.yml'
 $modDir = Join-Path $profileDir 'node_modules'
+$storeDir = Join-Path $profileDir 'local-packages'
+$storeCopy = Join-Path $storeDir 'dsh-fish-memory'
 $target = Join-Path $modDir 'dsh-fish-memory'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
@@ -32,6 +34,14 @@ if (-not (Test-Path $pkgPath)) { throw "profile not found: $pkgPath" }
 Copy-Item $pkgPath "$pkgPath.bak-$stamp" -Force
 Copy-Item $patchPath "$patchPath.bak-$stamp" -Force
 Write-Host "backup: package.json.bak-$stamp, cordis.patch.yml.bak-$stamp"
+
+# Keep an own copy inside the profile. The dependency below points at this copy,
+# so deleting or moving the folder you downloaded from breaks nothing.
+if (-not (Test-Path $storeDir)) { New-Item -ItemType Directory -Path $storeDir -Force | Out-Null }
+if (-not (Test-Path $storeCopy)) { New-Item -ItemType Directory -Path $storeCopy -Force | Out-Null }
+robocopy $here $storeCopy /MIR /NFL /NDL /NJH /NJS /NP /XD node_modules .git test | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "robocopy to local-packages failed with $LASTEXITCODE" }
+Write-Host "stored: $storeCopy"
 
 if (-not (Test-Path $modDir)) { New-Item -ItemType Directory -Path $modDir -Force | Out-Null }
 $existing = Get-Item $target -ErrorAction SilentlyContinue
@@ -51,7 +61,7 @@ $pkg = Get-Content $pkgPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if (-not $pkg.dependencies) { $pkg | Add-Member -NotePropertyName 'dependencies' -NotePropertyValue ([pscustomobject]@{}) }
 $deps = $pkg.dependencies
 if (-not ($deps.PSObject.Properties.Name -contains 'dsh-fish-memory')) {
-  $deps | Add-Member -NotePropertyName 'dsh-fish-memory' -NotePropertyValue "link:$($here -replace '\\','/')"
+  $deps | Add-Member -NotePropertyName 'dsh-fish-memory' -NotePropertyValue "link:$($storeCopy -replace '\\','/')"
   Write-Host "dep: dsh-fish-memory added"
 }
 if (-not $pkg.dsh) { $pkg | Add-Member -NotePropertyName 'dsh' -NotePropertyValue ([pscustomobject]@{}) }

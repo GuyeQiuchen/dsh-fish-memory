@@ -19,6 +19,8 @@ PROFILE_DIR="$DSH_HOME/profiles/$PROFILE"
 PKG="$PROFILE_DIR/package.json"
 PATCH="$PROFILE_DIR/cordis.patch.yml"
 MOD_DIR="$PROFILE_DIR/node_modules"
+STORE_DIR="$PROFILE_DIR/local-packages"
+STORE_COPY="$STORE_DIR/dsh-fish-memory"
 TARGET="$MOD_DIR/dsh-fish-memory"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
@@ -30,6 +32,20 @@ fi
 cp "$PKG" "$PKG.bak-$STAMP"
 cp "$PATCH" "$PATCH.bak-$STAMP"
 echo "backup: package.json.bak-$STAMP, cordis.patch.yml.bak-$STAMP"
+
+# Keep an own copy inside the profile. The dependency points at this copy, so
+# deleting or moving the folder you downloaded from breaks nothing.
+mkdir -p "$STORE_COPY"
+if command -v rsync >/dev/null 2>&1; then
+  rsync -a --delete \
+    --exclude '*.bak-*' --exclude 'loaded.txt' --exclude 'load-error.txt' \
+    --exclude 'node_modules' --exclude '.git' --exclude 'test' \
+    "$HERE"/ "$STORE_COPY"/
+else
+  cp -R "$HERE"/. "$STORE_COPY"/
+  rm -rf "$STORE_COPY/node_modules" "$STORE_COPY/.git" "$STORE_COPY/test"
+fi
+echo "stored: $STORE_COPY"
 
 mkdir -p "$MOD_DIR"
 if [ -L "$TARGET" ]; then
@@ -49,7 +65,7 @@ else
 fi
 echo "copied: $HERE -> $TARGET"
 
-node - "$PKG" "$HERE" <<'NODE'
+node - "$PKG" "$STORE_COPY" <<'NODE'
 const fs = require('node:fs')
 const [pkgPath, here] = process.argv.slice(2)
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))

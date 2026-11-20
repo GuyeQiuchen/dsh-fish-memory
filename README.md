@@ -40,7 +40,7 @@
 ./install.sh
 ```
 
-脚本会把包**复制**进 profile 的 `node_modules`，在 `package.json` 里挂上依赖和 bundle 项，在 `cordis.patch.yml` 里加好配置；改之前两份文件都带时间戳备份。装完重启 DSH。
+脚本会把包**复制**进 profile 的 `node_modules`，同时在 profile 自己的 `local-packages/` 里留一份副本（依赖指向这份副本，所以你下载的目录之后可以删掉、挪走）。改之前两份文件都带时间戳备份。装完重启 DSH。
 
 用别的 profile 名：`.\install.ps1 -Profile other` 或 `PROFILE=other ./install.sh`。
 
