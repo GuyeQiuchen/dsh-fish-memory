@@ -32,19 +32,23 @@
 
 ## 怎么装
 
-包要放在 profile 的 `node_modules` 里，DSH 才认得出。
-
-```
+```sh
 # Windows
-xcopy /E /I dsh-fish-memory "%USERPROFILE%\.dsh\profiles\desktop\node_modules\dsh-fish-memory"
+.\install.ps1
 
 # macOS / Linux
-cp -r dsh-fish-memory ~/.dsh/profiles/desktop/node_modules/
+./install.sh
 ```
 
-然后在同一个 profile 的 `package.json` 里加依赖、在 `cordis.patch.yml` 里挂上这个 bundle，重启 DSH。三样东西的具体名字看包里的 `cordis.patch.yml`。
+脚本会把包**复制**进 profile 的 `node_modules`，在 `package.json` 里挂上依赖和 bundle 项，在 `cordis.patch.yml` 里加好配置；改之前两份文件都带时间戳备份。装完重启 DSH。
 
-注意：包必须是**真目录**，不能是符号链接。用 `link:` 指向工作区时，pnpm 下次装任何插件都会把它改回链接，那时插件会静默不加载。
+用别的 profile 名：`.\install.ps1 -Profile other` 或 `PROFILE=other ./install.sh`。
+
+**必须是真目录，不能是符号链接。** 宿主只为物理住在 profile 里的包解析 `@deepseek-ai/*`；链接能加载，但插件可能静默不激活。又因为依赖写成 `link:`，pnpm 下次装任何插件都会把它改回链接——所以之后再装插件，重跑一次这个脚本。
+
+卸载：`.\uninstall.ps1` 或 `./uninstall.sh`。
+
+第一次启动时，如果记忆根是空的，它会自己铺出目录、索引、`SOUL.md`、家规和近况，并留一封给 AI 的信。
 
 ## 跟压缩插件怎么配合
 
