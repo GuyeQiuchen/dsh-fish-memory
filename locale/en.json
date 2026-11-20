@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Fish memory (compact)",
+    "description": "One small memory block per session instead of a full dump: persona line, top index entries and recent log, with mem_recall / mem_log / mem_page / mem_status tools for on-demand details.",
+    "detail": "docs/DETAIL.md"
+  }
+}

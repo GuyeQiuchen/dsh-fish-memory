@@ -1,0 +1,7 @@
+﻿node_modules/
+*.bak-*
+*.log
+loaded.txt
+load-error.txt
+index.full.js*
+.DS_Store

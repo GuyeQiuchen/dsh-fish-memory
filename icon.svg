@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Fish memory">
+  <rect width="64" height="64" rx="14" fill="#123A4D"/>
+  <path d="M12 34c8-10 20-12 28-6 4 3 6 7 4 11-2 4-7 6-12 6-8 0-16-4-20-11z" fill="#4FC3E8"/>
+  <path d="M44 39l10 8-12 1 2-9z" fill="#2E9BC5"/>
+  <circle cx="21" cy="33" r="2.6" fill="#0B2430"/>
+  <path d="M8 44c6 4 14 6 22 5" stroke="#7FE0FF" stroke-width="2" fill="none" stroke-linecap="round"/>
+</svg>

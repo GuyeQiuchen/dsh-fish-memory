@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "肥鱼记忆体（精简版）",
+    "description": "每轮只注入一小段记忆：人格一句话、索引前几条、最近动态；细节用 mem_recall 按需取，写回用 mem_log / mem_page。",
+    "detail": "docs/DETAIL.md"
+  }
+}
