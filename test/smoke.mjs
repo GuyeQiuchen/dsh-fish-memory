@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { apply, inject } from '../index.js'
 
 const contexts = []
@@ -10,7 +13,10 @@ const ctx = {
   tools: { register(def) { tools.push(def); return () => {} } },
 }
 
-apply(ctx, { memoryRoot: process.argv[2], bootMaxChars: 1400 })
+// 冒烟测试必须写临时目录：node --test 下 argv[2] 是测试文件名，
+// 直接传给 apply 会落到真实记忆根，把「刚整理过 / 刚写过日记」的提醒冲掉。
+const root = process.argv[2] && process.argv[2].includes('tmp') ? process.argv[2] : mkdtempSync(path.join(tmpdir(), 'fish-memory-smoke-'))
+apply(ctx, { memoryRoot: root, bootMaxChars: 1400 })
 
 console.log('inject:', JSON.stringify(inject))
 console.log('contexts:', contexts.map((c) => c.name))
@@ -25,3 +31,7 @@ for (const tool of tools) {
   const result = await tool.execute(args)
   console.log(result.text.slice(0, 700))
 }
+
+try {
+  rmSync(root, { recursive: true, force: true })
+} catch {}

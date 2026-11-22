@@ -32,8 +32,12 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 if (-not (Test-Path $pkgPath)) { throw "profile not found: $pkgPath" }
 
 Copy-Item $pkgPath "$pkgPath.bak-$stamp" -Force
-Copy-Item $patchPath "$patchPath.bak-$stamp" -Force
-Write-Host "backup: package.json.bak-$stamp, cordis.patch.yml.bak-$stamp"
+if (Test-Path $patchPath) {
+  Copy-Item $patchPath "$patchPath.bak-$stamp" -Force
+  Write-Host "backup: package.json.bak-$stamp, cordis.patch.yml.bak-$stamp"
+} else {
+  Write-Host "backup: package.json.bak-$stamp (no cordis.patch.yml yet)"
+}
 
 # Keep an own copy inside the profile. The dependency below points at this copy,
 # so deleting or moving the folder you downloaded from breaks nothing.
@@ -74,29 +78,18 @@ if ($bundles -notcontains 'dsh-fish-memory') {
 }
 $pkg | ConvertTo-Json -Depth 20 | Set-Content $pkgPath -Encoding UTF8
 
-$patch = [System.IO.File]::ReadAllText($patchPath, [System.Text.Encoding]::UTF8)
-if ($patch.Length -lt 100) { throw "cordis.patch.yml looks empty ($($patch.Length) chars); aborting" }
-if ($patch -notmatch '(?m)^- id: fish-memory') {
-  $patch = $patch.TrimEnd() + @"
-
-- insert:
-    - id: fish-memory
-      name: 'dsh-fish-memory'
-      config:
-        memoryRoot: ''
-        bootMaxChars: 1400
-        recallMaxChars: 1600
-        maxRecallResults: 6
-        rulesPage: 'identity/house-rules.md'
-        maxRulesChars: 500
-        maxRuleChars: 22
-        alarm: true
-"@
+# cordis.patch.yml: 不再插条目——包自带的 cordis.patch.yml（bundle）已经插入
+# fish-memory 行；再插一份会和它重复，DSH 对重复 id 会报冲突。
+# 全新 profile 可能还没有这个文件，没有就跳过。
+if (Test-Path $patchPath) {
+  $patch = [System.IO.File]::ReadAllText($patchPath, [System.Text.Encoding]::UTF8)
+  if ($patch.Length -lt 100) { throw "cordis.patch.yml looks empty ($($patch.Length) chars); aborting" }
+  Write-Host "patch: unchanged (fish-memory row comes from the bundle)"
+} else {
+  Write-Host "patch: no cordis.patch.yml yet; skipped (bundle provides the row)"
 }
-[System.IO.File]::WriteAllText($patchPath, $patch, (New-Object System.Text.UTF8Encoding($false)))
-Write-Host "patch: fish-memory entry added"
 
 Write-Host ""
 Write-Host "done. Restart DSH to apply."
-Write-Host "The memory root defaults to ~/.memory; an empty one builds its own skeleton on first boot."
+Write-Host "The memory root defaults to $DSH_HOME/memory (normally ~/.dsh/memory); an empty one builds its own skeleton on first boot."
 Write-Host "If you install other plugins later, re-run this script so the package stays a real directory."

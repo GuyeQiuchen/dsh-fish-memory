@@ -30,8 +30,12 @@ if [ ! -f "$PKG" ]; then
 fi
 
 cp "$PKG" "$PKG.bak-$STAMP"
-cp "$PATCH" "$PATCH.bak-$STAMP"
-echo "backup: package.json.bak-$STAMP, cordis.patch.yml.bak-$STAMP"
+if [ -f "$PATCH" ]; then
+  cp "$PATCH" "$PATCH.bak-$STAMP"
+  echo "backup: package.json.bak-$STAMP, cordis.patch.yml.bak-$STAMP"
+else
+  echo "backup: package.json.bak-$STAMP (no cordis.patch.yml yet)"
+fi
 
 # Keep an own copy inside the profile. The dependency points at this copy, so
 # deleting or moving the folder you downloaded from breaks nothing.
@@ -85,33 +89,23 @@ if (!bundles.includes('dsh-fish-memory')) {
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8')
 NODE
 
+# 4) cordis.patch.yml: 这里不再插条目。包自带的 cordis.patch.yml（bundle）已经
+#    插入 fish-memory 行；再插一份会和它重复，DSH 对重复 id 会报冲突。
+#    要改配置，手动写 `- id: fish-memory` + config，覆盖 bundle 的默认值。
+if [ -f "$PATCH" ]; then
 node - "$PATCH" <<'NODE'
 const fs = require('node:fs')
 const [patchPath] = process.argv.slice(2)
-let patch = fs.readFileSync(patchPath, 'utf8')
+const patch = fs.readFileSync(patchPath, 'utf8')
 if (patch.length < 100) {
   console.error('cordis.patch.yml looks empty; aborting')
   process.exit(1)
 }
-if (!/^- id: fish-memory/m.test(patch)) {
-  patch = patch.trimEnd() + `
-- insert:
-    - id: fish-memory
-      name: 'dsh-fish-memory'
-      config:
-        memoryRoot: ''
-        bootMaxChars: 1400
-        recallMaxChars: 1600
-        maxRecallResults: 6
-        rulesPage: 'identity/house-rules.md'
-        maxRulesChars: 500
-        maxRuleChars: 22
-        alarm: true
-`
-}
-fs.writeFileSync(patchPath, patch, 'utf8')
-console.log('patch: fish-memory entry added')
+console.log('patch: unchanged (fish-memory row comes from the bundle)')
 NODE
+else
+  echo "patch: no cordis.patch.yml yet; skipped (bundle provides the row)"
+fi
 
 if command -v node >/dev/null 2>&1; then
   node --check "$TARGET/index.js"
@@ -119,5 +113,5 @@ fi
 
 echo ""
 echo "done. Restart DSH to apply."
-echo "The memory root defaults to ~/.memory; an empty one builds its own skeleton on first boot."
+echo "The memory root defaults to $DSH_HOME/memory (normally ~/.dsh/memory); an empty one builds its own skeleton on first boot."
 echo "If you install other plugins later, re-run this script so the package stays a real directory."

@@ -7,6 +7,8 @@ import { moodLine, writeMood } from './lib/mood.js'
 import { harvest } from './lib/harvest.js'
 // —— 整理提醒模块（可删）：删掉这一行、lib/tidy.js、boot 里那一段和 markTidy 那行即可
 import { tidyDue, tidyLine, markTidy } from './lib/tidy.js'
+// —— 日记提醒模块（可删）：删掉这一行、lib/diary.js、boot 里那一段和 mem_diary 工具即可
+import { diaryDue, diaryLine, markDiary, diaryPageOf } from './lib/diary.js'
 // —— 记忆热度（可删）：删掉这一行、lib/heat.js，以及 queryHint 里的 heat 那几行即可
 import { bumpHit, hitCount } from './lib/heat.js'
 // —— 整理模块（可删）：删掉这一行、lib/consolidate.js 和 mem_consolidate 工具即可
@@ -14,13 +16,17 @@ import { buildWorklist } from './lib/consolidate.js'
 // —— 主动唤醒（可删）：删掉这一行、lib/wake.js、boot 里那段和 apply 里两个钩子即可
 import { dropWake, wakeLine } from './lib/wake.js'
 // —— 定时叫醒（可删）：删掉这一行、lib/alarm.js、inject 里的 'schedule' 和 apply 里那一段即可
-import { clearPendingWake, ensureAlarm, ensureTidyAlarm, markActive, markMessage, nudgeTidy, readPendingWake, tickAlarms } from './lib/alarm.js'
+import { clearPendingWake, ensureAlarm, ensureDiaryAlarm, ensureTidyAlarm, markActive, markMessage, nudgeDiary, nudgeTidy, readPendingWake, tickAlarms } from './lib/alarm.js'
 // —— 索引体检模块（可删）：删掉这一行、lib/indexcheck.js、appendPage 里的 hint 和 checkIndex 即可
 import { indexProblems, pageHint } from './lib/indexcheck.js'
-// —— 引擎健康（可删）：删掉这一行、lib/health.js、boot 里那一段即可
-import { engineHealth } from './lib/health.js'
 // —— 硬信息判定（可删）：删掉这一行、lib/hardinfo.js、queryHint 里那两行即可
 import { hasHardInfo } from './lib/hardinfo.js'
+// —— 度量模块（可删）：删掉这一行、lib/metrics.js、recall 里两处 bumpMetric 和 status 里那行 metrics 即可
+import { bumpMetric, metricsLine } from './lib/metrics.js'
+// —— 压缩线模块（可删）：删掉这一行、lib/compact.js、boot 里那一段即可
+import { compactionLine, lastCompaction } from './lib/compact.js'
+// —— 旧页提醒模块（可删）：删掉这一行、lib/oldpage.js、boot 里那一段即可
+import { oldPageLine } from './lib/oldpage.js'
 
 const DEFAULTS = {
   bootMaxChars: 1400,
@@ -31,9 +37,6 @@ const DEFAULTS = {
   rulesPage: 'identity/house-rules.md',
   growthPage: 'identity/growth.md',
   mustKeepPage: 'identity/must-keep.md',
-  // 引擎健康检查：压缩引擎多久没出报告就报警；reportPath 留空用默认位置
-  engineReportPath: '',
-  engineIdleHours: 24,
   survivalCoverage: 0.6,
   // 投影式压缩（远段只剩关键词）下，按「所在行」核对时用的覆盖率阈值
   keywordCoverage: 0.5,
@@ -49,6 +52,9 @@ const DEFAULTS = {
   // 定时叫醒 / 整理轮的开关：false 就不给会话挂任务，也不跑「分数够了才叫」的轮询。
   // 关掉不影响记忆本身（boot、回忆、写回照旧），只是不再主动开新会话找事做。
   alarm: true,
+  // 日记：默认开、一天一篇。关掉只是不再提醒，写过的页照旧。
+  diary: true,
+  diaryHours: 24,
 }
 
 const FRONTMATTER_NOISE = /^(title|tags|type|date|salience|last_access|summary|sources):|^---$|^\s*$/
@@ -318,6 +324,8 @@ class Store {
     this.hintedFor = ''
     // 最近有事件的会话 id：唤醒分数按会话分开存，boot 时用它找自己那份
     this.activeSession = ''
+    // 上一轮顶过的提示，等这一轮结束再结算「有没有被用上」
+    this.pendingHint = null
   }
 
   /**
@@ -387,6 +395,12 @@ class Store {
         '1. **一套默认人设**：开机块最前面那几行（名字、称呼、性格、说话风格）是插件自带的示例。',
         '2. **一套说话规矩**：identity/house-rules.md 的注入区每轮都会进 context，里面的条目是上一个使用者攒下的。',
         '3. **一个主动唤醒机制**：插件按时间给「主动做事」攒分，够了就在对话安静时叫醒你一轮，让你自己挑一件事做。',
+        '',
+        '## 不要删那条「一年」的任务',
+        '',
+        '主动唤醒、整理、日记，各会在宿主的定时任务里挂一条，间隔写的是**一年**。别把它当成写错的闹钟删掉——它是**投递通道**，不是闹钟。真正什么时候触发由插件代码判断（每几分钟查一次），日历只负责让宿主永远别自己响。',
+        '',
+        '删了它，唤醒就彻底失效了，而且不会报错：插件发现投递失败只会清账重建，中间那几轮悄无声息。整理和日记同理。',
         '',
         '## 你该先做的一件事',
         '',
@@ -492,12 +506,24 @@ class Store {
   }
 
   listPages() {
+    return this.scanPages().pages
+  }
+
+  /**
+   * 扫所有记忆页，并报告这次扫得全不全。
+   * 读不到的目录（权限、占用、被删）只跳过，但必须让调用方知道，
+   * 否则「没扫到」会被当成「页不存在」，索引行就被删了。
+   * @returns {{pages: string[], complete: boolean}}
+   */
+  scanPages() {
     const out = []
+    let complete = true
     const walk = (dir, prefix) => {
       let entries = []
       try {
         entries = readdirSync(dir, { withFileTypes: true })
       } catch {
+        complete = false
         return
       }
       for (const entry of entries) {
@@ -508,7 +534,7 @@ class Store {
       }
     }
     walk(this.root, '')
-    return out
+    return { pages: out, complete }
   }
 
   personaLine() {
@@ -543,15 +569,36 @@ class Store {
    * @param perLine - 每行几条
    * @returns 折好行的文本
    */
-  wrapRules(text, perLine = 6) {
+  /**
+   * 家规一条一行、带编号。
+   *
+   * 原来是「；」连成几行、每行塞六条，读起来只够扫一眼，认不出这是第几条、
+   * 也想不起来它针对什么场景。排开、编号之后，引用时可以说「第 9 条」，
+   * 读的时候也能一条一条停下来。
+   *
+   * 预算按「条」扣，不按字符截一半：排开之后一条被截成半句，比少一条更糟。
+   * 真要省地方，该由主人删条目或调 maxRulesChars，而不是让它悄悄断掉。
+   *
+   * @param text - rulesText 的结果（「；」分隔的一长串）。
+   * @param budget - 排开后可用的字符预算；不给就不限。
+   * @returns 排好行、编好号的文本。
+   */
+  wrapRules(text, budget) {
     const items = String(text ?? '')
       .split('；')
       .map((item) => item.trim())
       .filter(Boolean)
-    if (items.length <= perLine) return items.join('；')
+    if (items.length === 0) return ''
+    const limit = Number.isFinite(budget) && budget > 0 ? budget : Number.POSITIVE_INFINITY
     const lines = []
-    for (let i = 0; i < items.length; i += perLine) lines.push(items.slice(i, i + perLine).join('；'))
-    return `\n  ${lines.join('\n  ')}`
+    let used = 0
+    for (let i = 0; i < items.length; i += 1) {
+      const line = `  ${i + 1}. ${items[i]}`
+      if (used + line.length + 1 > limit) break
+      lines.push(line)
+      used += line.length + 1
+    }
+    return `\n${lines.join('\n')}`
   }
 
   rulesStatus() {
@@ -678,7 +725,7 @@ class Store {
       const summary = m[3].replace(/[（(]?salience:\s*\d+[)）]?/g, '').trim()
       rows.push({ title: m[1], path: m[2], summary, salience })
     }
-    rows.sort((a, b) => a.salience - b.salience || a.title.localeCompare(b.title))
+    rows.sort((a, b) => b.salience - a.salience || a.title.localeCompare(b.title))
     return rows.slice(0, this.config.maxIndexLines)
   }
 
@@ -762,7 +809,7 @@ class Store {
     const gone = new Set(shadowed.map((seq) => Number(seq)))
     let events
     try {
-      events = session?.events
+      events = typeof session?.snapshotEvents === 'function' ? session.snapshotEvents() : session?.events
     } catch {
       return ''
     }
@@ -915,6 +962,11 @@ class Store {
 
   bootTextSync() {
     const parts = [`【${this.config.memoryName || ''}记忆体·精简版】`]
+    // —— 度量模块（可删）：上一轮给的提示，整整一轮没人碰，记一次空转
+    if (this.pendingHint !== null) {
+      bumpMetric(this.root, 'hintIdle')
+      this.pendingHint = null
+    }
     // 库不在就先铺骨架：新装、或者换了记忆根，第一次跑就自己站起来
     let seeded = false
     try {
@@ -936,7 +988,7 @@ class Store {
     parts.push(`· ${CORE_PERSONA}`)
     // 家规紧跟人格：位置越靠前越吃得到注意力，放中段等于没写
     const rules = this.rulesText()
-    if (rules) parts.push(`· 家规：${this.wrapRules(clip(rules, this.config.maxRulesChars), 6)}`)
+    if (rules) parts.push(`· 家规：${this.wrapRules(rules, this.config.maxRulesChars)}`)
     else if (this.config.rulesHint !== false) {
       parts.push('· 家规：还没有。主人纠正你的说法时，用 rule_add 记一条（short 压成短语，原话放 raw）')
     }
@@ -948,6 +1000,13 @@ class Store {
     } catch {
       /* 提醒坏了照常注入记忆 */
     }
+    // —— 日记提醒模块（可删）：满 diaryHours 顶一行，写着今天该落在哪页
+    try {
+      const diary = diaryLine(this.root, this.config)
+      if (diary !== '') parts.push(diary)
+    } catch {
+      /* 提醒坏了照常注入记忆 */
+    }
     // —— 自动提示（可删）：这轮的话在旧的记忆页里对得上，才顶几行；对不上就闭嘴
     // 位置紧跟家规：这一轮要用得上什么，比「哪儿坏了」更该先看到
     try {
@@ -956,11 +1015,28 @@ class Store {
     } catch {
       /* 提示坏了照常注入记忆 */
     }
+    // —— 时态声明（可删）：它下面这些是历史记录，不是此刻的状态。
+    // 少了这句，推断出来的东西和亲眼见过的长得一样，一旦推错就一直错下去。
+    parts.push('· 下面这些是过去的记录，不是此刻的状态；和现在对不上，以现在为准')
+    // —— 压缩线模块（可删）：压缩引擎刚压完的那段，把 seq 范围接上来
+    try {
+      const compacted = compactionLine()
+      if (compacted !== '') parts.push(compacted)
+    } catch {
+      /* 读不到压缩报告照常注入记忆 */
+    }
+    // —— 旧页提醒模块（可删）：给最久没被碰过的那页一个固定位置，一次一条
+    try {
+      const old = oldPageLine(this.root, this.config)
+      if (old !== '') parts.push(old)
+    } catch {
+      /* 挑不出旧页照常注入记忆 */
+    }
     const growth = this.growthText()
     if (growth) parts.push(`· 近况：${clip(growth, this.config.maxGrowthChars)}`)
     const index = this.indexLines()
     if (index.length) {
-      parts.push('· 索引（salience 优先）：' + index.map((r) => `${r.title}（${clip(r.summary, 46)}）`).join(' · '))
+      parts.push('· 索引（salience 优先）：' + index.map((r) => `${r.title}（${clip(r.summary, 20)}）`).join(' · '))
     }
     const lostWarn = this.lossWarning()
     if (lostWarn) {
@@ -982,16 +1058,6 @@ class Store {
     } catch {
       /* 体检坏了照常注入记忆 */
     }
-    // —— 引擎健康（可删）：压缩引擎久没出报告就顶一行；正常或没装都零字
-    try {
-      const engine = engineHealth({
-        reportPath: this.config.engineReportPath,
-        limitHours: this.config.engineIdleHours,
-      })
-      if (engine !== '') parts.push(engine)
-    } catch {
-      /* 检查坏了照常注入记忆 */
-    }
     // —— 心情模块（可删）：lib/mood.js 出这一行，坏了自己吞，不连累记忆体
     try {
       const mood = moodLine(this.root, this.config)
@@ -1000,7 +1066,8 @@ class Store {
       /* 心情坏了照常注入记忆 */
     }
     const log = this.logLines()
-    if (log.length) parts.push('· 最近：' + log.map((l) => clip(l, 70)).join(' / '))
+    // 只留最近一条：这一行在预算尾巴上，多了必被截，截一半比不给更糟
+    if (log.length) parts.push('· 最近：' + clip(log[log.length - 1], 50))
     parts.push(`· 细节按需取：mem_recall(query)；写回：mem_log / mem_page。根目录 ${this.root}`)
     return clip(parts.join('\n'), this.config.bootMaxChars)
   }
@@ -1061,7 +1128,39 @@ class Store {
   }
 
   /**
-   * 按「提过几次」给旧记忆：提一次给一句指针，提得越多给得越足，提多了近乎全文
+   * 挑出页里真正命中的那几行，带页上日期，最多三行。
+   *
+   * 为什么不再整段贴：整页贴进来噪音大、占 token，更糟的是模型容易把
+   * 页里别的内容也当成这轮的证据。只给命中的行，反而更该去看原文。
+   *
+   * @param rel - 页相对路径。
+   * @param terms - 命中的词。
+   * @param max - 最多几行，默认三行。
+   * @returns 带日期的几行文本；挑不出就是空串。
+   */
+  hitLines(rel, terms, max = 3) {
+    try {
+      const raw = this.read(rel)
+      const date = (raw.match(/^date:\s*(.+)$/m) ?? [])[1] ?? ''
+      const body = raw
+        .split(/\r?\n/)
+        .filter((line) => line.trim() !== '' && !FRONTMATTER_NOISE.test(line.trim()))
+      const picked = []
+      for (const line of body) {
+        if (picked.length >= max) break
+        if (!terms.some((term) => line.includes(term))) continue
+        picked.push(`  ${line.trim().slice(0, 90)}`)
+      }
+      if (picked.length === 0) return ''
+      const head = date === '' ? '' : `（页上日期 ${String(date).trim()}）`
+      return head + (head === '' ? '' : '\n') + picked.join('\n')
+    } catch {
+      return ''
+    }
+  }
+
+  /**
+   * 按「提过几次」给旧记忆：提一次给指针，提得越多给得越足，提多了近乎全文
    * 命中拿不准仍然闭嘴——自动注错比不注更糟
    * @returns 一行（或几行）注入文本；不该注入时是空串
    */
@@ -1084,21 +1183,42 @@ class Store {
     const heat = hitCount(this.root, top.rel)
     // 页里有硬信息就别只给页码：数字、路径、命令光看号码翻不准，直接摊正文
     const hard = hasHardInfo(this.read(top.rel))
-    if (heat <= 1 && !hard) {
+    const body = this.hitLines(top.rel, terms, hard ? 5 : 3)
+    if (body === '') {
       return `· 可能有这一页：${top.rel}（命中 ${top.matched}/${terms.length} 词）。要看细节用 mem_recall`
     }
-    // 提得越多，摊开得越开：六次以上近乎全文；有硬信息的再翻一倍
-    const base = heat <= 1 ? 6 : heat >= 6 ? 60 : heat >= 4 ? 16 : 6
-    const lines = hard ? Math.min(60, base * 2) : base
-    const note = heat <= 1 ? '命中硬信息' : heat >= 6 ? '常聊' : `提过 ${heat} 次`
-    return `· 手里可能用得上（${top.rel}，${note}）：\n${this.headLines(top.rel, lines)}`
+    // 措辞很重要：这些是旧记录，不是当下状态；冲突时以当前为准
+    const note = hard ? '含硬信息' : heat >= 6 ? '常聊' : heat > 1 ? `提过 ${heat} 次` : '旧记录'
+    // 同样的几行连着重贴就是噪音：贴过的内容没变就不再贴。
+    // 签名里带上最近一次压缩的时间——那段被折掉了，就得重新给一次。
+    let compactedAt = ''
+    try {
+      compactedAt = lastCompaction()?.at ?? ''
+    } catch {
+      /* 读不到压缩时间就当没压过 */
+    }
+    const sig = `${top.rel}\u0000${compactedAt}\u0000${body}`
+    if (this.lastHintSig === sig) return ''
+    this.lastHintSig = sig
+    bumpMetric(this.root, 'hint')
+    // 记下发出去的这一条：下一轮要么被召回用掉，要么记一次空转
+    this.pendingHint = top.rel
+    return `· 以下是检索到的旧记录，回答前先核对，与当前说法冲突以当前为准（${top.rel}，${note}，命中 ${top.matched}/${terms.length} 词）：\n${body}`
   }
 
   recall(query) {
+    // —— 度量模块（可删）：删掉这两行和 mem_status 里那行即可
+    bumpMetric(this.root, 'recall')
     const { terms, hits } = this.searchHits(query)
     if (!terms.length) return { status: 'rejected', reason: 'query 不能为空' }
     const chosen = hits.slice(0, this.config.maxRecallResults)
     if (!chosen.length) return { status: 'empty', hint: '换关键词，或用 mem_status 看有哪些页' }
+    bumpMetric(this.root, 'recallHit')
+    // 上一轮提示的那页真被读了：算它有用，不再计空转
+    if (this.pendingHint !== null && chosen.some((h) => h.rel === this.pendingHint)) {
+      bumpMetric(this.root, 'hintUsed')
+      this.pendingHint = null
+    }
     const body = chosen.map((h) => `## ${h.rel}（${h.count} 处）\n${h.picked.join('\n')}`).join('\n\n')
     return { status: 'ok', result: clip(body, this.config.recallMaxChars), more: hits.length > chosen.length }
   }
@@ -1138,16 +1258,35 @@ class Store {
     this.appendLog(title, cleanBody)
   }
 
-  appendPage(page, body, source) {
+  /**
+   * 来源标签：只在新建页时写一行，旧页一律不动。
+   *
+   * 为什么不给旧页补：批量重判等于把所有旧记忆重写一遍，
+   * 而且旧页里哪些是推断已经无从查证了，硬标反而更假。
+   * @param origin - stated / observed / inferred，其它值一律当没给。
+   * @returns 形如 `> 来源：推断（未经核实）` 的一行；没给就是空串。
+   */
+  originLine(origin) {
+    const label = { stated: '主人亲口说的', observed: '自己查证过的', inferred: '推断，未经核实' }[origin]
+    return label === undefined ? '' : `> 来源：${label}\n\n`
+  }
+
+  appendPage(page, body, source, origin) {
     const rel = String(page ?? '').trim()
     const cleanBody = String(body ?? '').trim().slice(0, 6000)
     if (!rel.endsWith('.md') || rel.startsWith('/') || rel.includes('..')) {
       return { status: 'rejected', reason: 'page 必须是记忆根内的 .md 相对路径' }
     }
+    // 索引、日志、人格这些是结构文件，用专门工具写；mem_page 只写内容页
+    if (/^(index|log|SOUL|MEMORY|BOOTSTRAP|AGENTS)\.md$/i.test(rel)) {
+      return { status: 'rejected', reason: '这是结构文件，用对应工具或直接编辑，不要用 mem_page 追加' }
+    }
     if (!cleanBody) return { status: 'rejected', reason: 'text 不能为空' }
     const full = this.file(rel)
     mkdirSync(path.dirname(full), { recursive: true })
-    if (!existsSync(full)) appendFileSync(full, `# ${rel.replace(/\.md$/, '')}\n\n`, 'utf8')
+    if (!existsSync(full)) {
+      appendFileSync(full, `# ${rel.replace(/\.md$/, '')}\n\n${this.originLine(origin)}`, 'utf8')
+    }
     const tag = this.sourceTag(source)
     appendFileSync(full, `\n## [${today()}] 补充${tag}\n${cleanBody}\n`, 'utf8')
     this.cache.delete(full)
@@ -1179,7 +1318,10 @@ class Store {
    * @returns 改动了几处（补、删、去重合计）。
    */
   rebuildIndex() {
-    const pages = this.listPages().filter((rel) => rel !== 'index.md')
+    const scan = this.scanPages()
+    // 扫不全就只补不删：读不到的目录不等于页被删了
+    const canDelete = scan.complete && scan.pages.length > 0
+    const pages = scan.pages.filter((rel) => rel !== 'index.md')
     const file = this.file('index.md')
     let text = ''
     try {
@@ -1202,6 +1344,10 @@ class Store {
           continue
         }
         if (!known.has(rel) || seen.has(rel)) {
+          if (!canDelete) {
+            kept.push(line)
+            continue
+          }
           changed += 1
           continue
         }
@@ -1222,6 +1368,12 @@ class Store {
     }
 
     if (changed === 0) return 0
+    try {
+      // 重建前留一份旧索引：删错了还能捞回来
+      writeAtomic(this.file('index.md.bak'), text)
+    } catch {
+      /* 备份失败不挡重建 */
+    }
     writeAtomic(file, joinIndexSections(sections))
     return changed
   }
@@ -1269,6 +1421,8 @@ class Store {
       pages: pages.length,
       indexEntries: index.length,
       recentLog: log[0] ?? '',
+      // —— 度量模块（可删）：一次都没调过召回就是空串，不占地方
+      metrics: metricsLine(this.root),
       bootPreview: boot,
     }
   }
@@ -1298,7 +1452,7 @@ function textTool(name, description, parameters, execute) {
   }
 }
 
-export const inject = ['tools', 'systemPrompt', 'schedule']
+export const inject = ['tools', 'systemPrompt']
 
 export { Store }
 
@@ -1356,6 +1510,7 @@ export function apply(ctx, config = {}) {
               const scheduleService = typeof ctx.get === 'function' ? ctx.get('schedule') : undefined
               ensureAlarm(scheduleService, sid, store.root).catch(() => {})
               ensureTidyAlarm(scheduleService, sid, store.root).catch(() => {})
+              ensureDiaryAlarm(scheduleService, sid, store.root).catch(() => {})
             }
           } catch {
             /* 建不出任务不影响这一轮 */
@@ -1369,6 +1524,7 @@ export function apply(ctx, config = {}) {
           try {
             const scheduleService = typeof ctx.get === 'function' ? ctx.get('schedule') : undefined
             nudgeTidy(scheduleService, store.root, store.config).catch(() => {})
+            nudgeDiary(scheduleService, store.root, store.config).catch(() => {})
           } catch {
             /* 催不到就等下次到期 */
           }
@@ -1450,7 +1606,7 @@ export function apply(ctx, config = {}) {
     ),
     textTool(
       'mem_page',
-      '向记忆库中某个页面末尾追加一段补充（页面必须是记忆根内的 .md 相对路径，例如 skills/foo.md）。知道这段出自哪段对话时，把 source 填上（例如 seq 13946-13981）',
+      '向记忆库中某个页面末尾追加一段补充（页面必须是记忆根内的 .md 相对路径，例如 skills/foo.md）。知道这段出自哪段对话时，把 source 填上（例如 seq 13946-13981）。新建页时填 origin 标清这段是怎么来的：stated 是主人亲口说的、observed 是自己查证过的、inferred 是推出来的；推断和事实不分开，以后就分不清了。旧页不加这个标签',
       {
         type: 'object',
         additionalProperties: false,
@@ -1458,10 +1614,11 @@ export function apply(ctx, config = {}) {
           page: { type: 'string', minLength: 3, maxLength: 200 },
           text: { type: 'string', minLength: 1, maxLength: 6000 },
           source: { type: 'string', maxLength: 60 },
+          origin: { type: 'string', enum: ['stated', 'observed', 'inferred'] },
         },
         required: ['page', 'text'],
       },
-      (args) => store.appendPage(args.page, args.text, args.source),
+      (args) => store.appendPage(args.page, args.text, args.source, args.origin),
     ),
     textTool(
       'mem_status',
@@ -1579,6 +1736,29 @@ export function apply(ctx, config = {}) {
     )
   }
 
+  // —— 日记模块（可删）：写完打点，把「该写日记」那行清掉
+  if (settings.diary !== false) {
+    tools.push(
+      textTool(
+        'mem_diary',
+        '写完今天的日记之后调它打点：记下写完的时间，「该写日记」那行就会消失。只打点、不写正文——正文用 mem_page 落到 journal/当天日期.md',
+        {
+          type: 'object',
+          additionalProperties: false,
+          properties: {},
+        },
+        async () => {
+          const page = diaryPageOf()
+          try {
+            markDiary(store.root)
+          } catch {
+            /* 打点失败也把页名给出去 */
+          }
+          return { status: 'ok', page }
+        },
+      ),
+    )
+  }
   for (const definition of tools) {
     ctx.effect(() => ctx.tools.register(definition))
   }

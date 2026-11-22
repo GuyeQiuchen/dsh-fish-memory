@@ -65,7 +65,8 @@ assert.equal(forced.status, 'ok')
 assert.equal(forced.overBudget, true)
 
 const boot = store.bootTextSync()
-assert.ok(boot.includes('· 家规：称呼主人；结论先行'), boot)
+assert.ok(boot.includes('1. 称呼主人'), boot)
+assert.ok(boot.includes('2. 结论先行'), boot)
 assert.ok(boot.includes('…[截断]'), boot)
 
 const truncatedStatus = store.rulesStatus()
@@ -87,6 +88,6 @@ const created = fresh.addRule({ short: '别用话题冒号', raw: '主人说别�
 assert.equal(created.status, 'ok', JSON.stringify(created))
 const createdPage = readFileSync(path.join(emptyRoot, 'identity', 'house-rules.md'), 'utf8')
 assert.match(createdPage, /<!-- rules:start -->\n别用话题冒号\n<!-- rules:end -->/)
-assert.ok(fresh.bootTextSync().includes('· 家规：别用话题冒号'), fresh.bootTextSync())
+assert.ok(fresh.bootTextSync().includes('1. 别用话题冒号'), fresh.bootTextSync())
 console.log('fresh install test: ok')
 
