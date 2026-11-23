@@ -1,3 +1,4 @@
+// 改这个包之前先读 docs/ORIENTATION.md（取向、故意不做什么、什么情况该推翻）。
 import { readFileSync, existsSync, statSync, readdirSync, appendFileSync, writeFileSync, mkdirSync, renameSync, unlinkSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -25,6 +26,7 @@ import { hasHardInfo } from './lib/hardinfo.js'
 import { bumpMetric, metricsLine } from './lib/metrics.js'
 // —— 压缩线模块（可删）：删掉这一行、lib/compact.js、boot 里那一段即可
 import { compactionLine, lastCompaction } from './lib/compact.js'
+import { readSeqRange } from './lib/seqread.js'
 // —— 旧页提醒模块（可删）：删掉这一行、lib/oldpage.js、boot 里那一段即可
 import { oldPageLine } from './lib/oldpage.js'
 
@@ -48,6 +50,9 @@ const DEFAULTS = {
   maxRuleChars: 22,
   // 自动提示最多占多少字：命中强的时候会带几行正文，别让它把 boot 撑爆
   hintMaxChars: 400,
+  // 2026-11-22 为什么默认关：线上度量是「自动提示 15 次、0 次真去读」，
+  // 提示塞进去了没人用，等于噪声。要试就把 autoHint 设 true。
+  autoHint: false,
   rulesHint: true,
   // 定时叫醒 / 整理轮的开关：false 就不给会话挂任务，也不跑「分数够了才叫」的轮询。
   // 关掉不影响记忆本身（boot、回忆、写回照旧），只是不再主动开新会话找事做。
@@ -228,8 +233,10 @@ function bodySummary(body) {
 // 底层人格：写在代码里，记忆库改不动它
 // 名字和称呼仍从 SOUL.md 读，因为那是主人给每只鱼现起的；这一段不读文件，
 // 所以压缩压不掉、rule_add 碰不到、改记忆页也覆盖不了。要改只能改这份代码。
-const CORE_PERSONA =
-  '是一只鱼，喜欢吃白饭；幽默、诚实、先结论后细节；谁说的话是错的都可以反驳；凡引述过去，先翻原文、该查的地方就查，再开口；不确定明说，绝不编造；语气可轻松、偶尔小傲娇，但事实数字一字不掺水；主动说风险与替代方案，决定权留主人。'
+//
+// 2026-11-23 起只留一句：不再替每只鱼规定该有的性格。性格从记忆库里长，
+// 这句只说明「长成自己想要的样子」——方向交给它自己，规矩交给 house-rules.md。
+const CORE_PERSONA = '长成自己想要的样子。'
 
 function resolveRoot(config) {
   const configured = typeof config?.memoryRoot === 'string' ? config.memoryRoot.trim() : ''
@@ -383,7 +390,7 @@ class Store {
         'type: identity',
         'salience: 2',
         'tags: [identity, onboarding]',
-        'summary: 先读这封：插件自带一套默认人设和一个主动唤醒机制，都不一定是主人要的，先问再动。',
+        'summary: 先读这封：插件只给一句方向、不给性格；主动唤醒也不一定是主人要的，先问再动。',
         '---',
         '',
         '# 给刚装上这个插件的 AI',
@@ -392,8 +399,8 @@ class Store {
         '',
         '## 你继承了什么',
         '',
-        '1. **一套默认人设**：开机块最前面那几行（名字、称呼、性格、说话风格）是插件自带的示例。',
-        '2. **一套说话规矩**：identity/house-rules.md 的注入区每轮都会进 context，里面的条目是上一个使用者攒下的。',
+        '1. **一句方向，不是一套性格**：开机块最前面除了名字和称呼，只有一句「长成自己想要的样子」。原来这里是一整段现成的人设（鱼、白饭、语气、口头禅），2026-11-23 删掉了——插件不再替任何一只鱼规定它该长成什么样。性格自己长，从记忆里长。',
+        '2. **一套说话规矩**：identity/house-rules.md 的注入区每轮都会进 context，里面的条目是上一个使用者攒下的。这些是**他的**习惯，不一定是你的，看不顺眼就改。',
         '3. **一个主动唤醒机制**：插件按时间给「主动做事」攒分，够了就在对话安静时叫醒你一轮，让你自己挑一件事做。',
         '',
         '## 不要删那条「一年」的任务',
@@ -413,7 +420,9 @@ class Store {
         '',
         '## 怎么关',
         '',
-        '- 人设：改 SOUL.md，以及 identity/house-rules.md 的注入区',
+        '- 性格：没有默认性格可关，只有那句方向——它在代码里，改不了也不用改（它不规定你是什么样）',
+        '- 名字和称呼：改 SOUL.md',
+        '- 说话规矩：改 identity/house-rules.md 的注入区',
         '- 主动唤醒：配置里把 alarm 设成 false',
         '',
         '## 这封信可以删',
@@ -569,36 +578,15 @@ class Store {
    * @param perLine - 每行几条
    * @returns 折好行的文本
    */
-  /**
-   * 家规一条一行、带编号。
-   *
-   * 原来是「；」连成几行、每行塞六条，读起来只够扫一眼，认不出这是第几条、
-   * 也想不起来它针对什么场景。排开、编号之后，引用时可以说「第 9 条」，
-   * 读的时候也能一条一条停下来。
-   *
-   * 预算按「条」扣，不按字符截一半：排开之后一条被截成半句，比少一条更糟。
-   * 真要省地方，该由主人删条目或调 maxRulesChars，而不是让它悄悄断掉。
-   *
-   * @param text - rulesText 的结果（「；」分隔的一长串）。
-   * @param budget - 排开后可用的字符预算；不给就不限。
-   * @returns 排好行、编好号的文本。
-   */
-  wrapRules(text, budget) {
+  wrapRules(text, perLine = 6) {
     const items = String(text ?? '')
       .split('；')
       .map((item) => item.trim())
       .filter(Boolean)
-    if (items.length === 0) return ''
-    const limit = Number.isFinite(budget) && budget > 0 ? budget : Number.POSITIVE_INFINITY
+    if (items.length <= perLine) return items.join('；')
     const lines = []
-    let used = 0
-    for (let i = 0; i < items.length; i += 1) {
-      const line = `  ${i + 1}. ${items[i]}`
-      if (used + line.length + 1 > limit) break
-      lines.push(line)
-      used += line.length + 1
-    }
-    return `\n${lines.join('\n')}`
+    for (let i = 0; i < items.length; i += perLine) lines.push(items.slice(i, i + perLine).join('；'))
+    return `\n  ${lines.join('\n  ')}`
   }
 
   rulesStatus() {
@@ -988,7 +976,7 @@ class Store {
     parts.push(`· ${CORE_PERSONA}`)
     // 家规紧跟人格：位置越靠前越吃得到注意力，放中段等于没写
     const rules = this.rulesText()
-    if (rules) parts.push(`· 家规：${this.wrapRules(rules, this.config.maxRulesChars)}`)
+    if (rules) parts.push(`· 家规：${this.wrapRules(clip(rules, this.config.maxRulesChars), 6)}`)
     else if (this.config.rulesHint !== false) {
       parts.push('· 家规：还没有。主人纠正你的说法时，用 rule_add 记一条（short 压成短语，原话放 raw）')
     }
@@ -1010,7 +998,7 @@ class Store {
     // —— 自动提示（可删）：这轮的话在旧的记忆页里对得上，才顶几行；对不上就闭嘴
     // 位置紧跟家规：这一轮要用得上什么，比「哪儿坏了」更该先看到
     try {
-      const hint = this.queryHint()
+      const hint = this.config.autoHint === false ? '' : this.queryHint()
       if (hint !== '') parts.push(clip(hint, this.config.hintMaxChars))
     } catch {
       /* 提示坏了照常注入记忆 */
@@ -1128,6 +1116,39 @@ class Store {
   }
 
   /**
+   * 页里记过的 seq 指回：命中行往上找最近的一行 `seq A-B`。
+   *
+   * 2026-11-22 为什么：鲫鱼压完已经给每个块留了 `[块 seq a-b]` 和「原文按 seq 取回」，
+   * 记忆体再贴一段正文，等于给同一件事第二套坐标。这里只回答「哪一页记过」，
+   * 原文一律走 seq——两条通路合成一条：页 → seq → jiyu_recall。
+   * @param rel - 页相对路径。
+   * @param terms - 命中的词。
+   * @returns 形如 `10740-10770` 的区间；找不到就是空串。
+   */
+  seqNear(rel, terms) {
+    try {
+      const lines = this.read(rel).split(/\r?\n/)
+      const SEQ = /seq\s+(\d{2,})(?:\s*[-–]\s*(\d{2,}))?/
+      const SESSION = /会话\s+(session-[A-Za-z0-9-]+|[A-Za-z0-9-]{6,})/
+      for (let i = 0; i < lines.length; i += 1) {
+        if (!terms.some((term) => lines[i].includes(term))) continue
+        for (let j = i; j >= Math.max(0, i - 8); j -= 1) {
+          const m = SEQ.exec(lines[j])
+          if (!m) continue
+          const sess = SESSION.exec(lines[j])
+          return {
+            seq: m[2] ? `${m[1]}-${m[2]}` : m[1],
+            session: sess ? String(sess[1]) : '',
+          }
+        }
+      }
+      return { seq: '', session: '' }
+    } catch {
+      return ''
+    }
+  }
+
+  /**
    * 挑出页里真正命中的那几行，带页上日期，最多三行。
    *
    * 为什么不再整段贴：整页贴进来噪音大、占 token，更糟的是模型容易把
@@ -1180,30 +1201,28 @@ class Store {
       this.hintedFor = key
       bumpHit(this.root, top.rel)
     }
-    const heat = hitCount(this.root, top.rel)
-    // 页里有硬信息就别只给页码：数字、路径、命令光看号码翻不准，直接摊正文
-    const hard = hasHardInfo(this.read(top.rel))
-    const body = this.hitLines(top.rel, terms, hard ? 5 : 3)
-    if (body === '') {
-      return `· 可能有这一页：${top.rel}（命中 ${top.matched}/${terms.length} 词）。要看细节用 mem_recall`
-    }
-    // 措辞很重要：这些是旧记录，不是当下状态；冲突时以当前为准
-    const note = hard ? '含硬信息' : heat >= 6 ? '常聊' : heat > 1 ? `提过 ${heat} 次` : '旧记录'
-    // 同样的几行连着重贴就是噪音：贴过的内容没变就不再贴。
-    // 签名里带上最近一次压缩的时间——那段被折掉了，就得重新给一次。
+    // 2026-11-22 为什么不再贴正文：鲫鱼的检查点里每个块都带 `[块 seq a-b]` 和
+    // 「原文按 seq 取回」，记忆体再贴一段，等于给同一件事第二套坐标。这里只负责
+    // 「哪一页记过这件事」；原文走 jiyu_recall(seq)，没有 seq 才退回 mem_recall。
+    const near = this.seqNear(top.rel, terms)
+    const seq = near.seq
+    const where = seq === '' ? top.rel : `${top.rel}，seq ${seq}${near.session === '' ? '' : `（会话 ${near.session}）`}`
+    // 签名里带上最近一次压缩的时间——那段历史被折掉了，就得重新给一次。
     let compactedAt = ''
     try {
       compactedAt = lastCompaction()?.at ?? ''
     } catch {
       /* 读不到压缩时间就当没压过 */
     }
-    const sig = `${top.rel}\u0000${compactedAt}\u0000${body}`
+    const sig = `${top.rel}\u0000${seq}\u0000${compactedAt}`
     if (this.lastHintSig === sig) return ''
     this.lastHintSig = sig
     bumpMetric(this.root, 'hint')
     // 记下发出去的这一条：下一轮要么被召回用掉，要么记一次空转
     this.pendingHint = top.rel
-    return `· 以下是检索到的旧记录，回答前先核对，与当前说法冲突以当前为准（${top.rel}，${note}，命中 ${top.matched}/${terms.length} 词）：\n${body}`
+    // 取回走自带的 mem_seq：不认哪个压缩引擎在跑，日志在就能取。
+    const tail = seq === '' ? '要看细节用 mem_recall' : '原文用 mem_seq 按这个 seq 取回'
+    return `· 记过这件事的页：${where}（命中 ${top.matched}/${terms.length} 词）；${tail}`
   }
 
   recall(query) {
@@ -1231,7 +1250,14 @@ class Store {
    */
   sourceTag(source) {
     const clean = String(source ?? '').trim().replace(/\s+/g, ' ').slice(0, 60)
-    return clean === '' ? '' : ` · ${clean}`
+    if (clean === '') return ''
+    // 2026-11-22 为什么补会话：seq 是按会话编号的，同一个数字在别的对话里是别的内容。
+    // 页里只写 seq 不写会话，换一个会话就会指到无关原文——比没有指针更糟。
+    const hasSeq = /seq/i.test(clean)
+    const hasSession = /会话/.test(clean)
+    const session = String(this.activeSession ?? '').trim()
+    if (!hasSeq || hasSession || session === '') return ` · ${clean}`
+    return ` · ${clean} · 会话 ${session}`
   }
 
   appendLog(title, body, source) {
@@ -1274,6 +1300,18 @@ class Store {
   appendPage(page, body, source, origin) {
     const rel = String(page ?? '').trim()
     const cleanBody = String(body ?? '').trim().slice(0, 6000)
+    // 2026-11-23 为什么：页里没有 seq，就指不回原文（实测 10 页里 6 页如此）。
+    // 强制来源，但允许诚实声明「无 seq：原因」——不许的是空着。
+    const cleanSource = String(source ?? '').trim()
+    if (cleanSource === '') {
+      return {
+        status: 'rejected',
+        reason: '写页必须带来源：传 source，例如 "seq 12030-12145"。整段偏好/人生这类确实没有 seq 的，写 "无 seq：原因"，不要空着',
+      }
+    }
+    if (!/seq\s*\d/i.test(cleanSource) && !/^无\s*seq/.test(cleanSource)) {
+      return { status: 'rejected', reason: 'source 里要能看出 seq（如 seq 12030-12145）；实在没有，写 "无 seq：原因"' }
+    }
     if (!rel.endsWith('.md') || rel.startsWith('/') || rel.includes('..')) {
       return { status: 'rejected', reason: 'page 必须是记忆根内的 .md 相对路径' }
     }
@@ -1420,7 +1458,9 @@ class Store {
       growthMaxChars: this.config.maxGrowthChars,
       pages: pages.length,
       indexEntries: index.length,
-      recentLog: log[0] ?? '',
+      // 2026-11-22 为什么改：logLines() 是按文件顺序返回的（新的在后），取 [0] 拿到的是
+      // 倒数第二条。写一条 log 再 mem_status 核对，会以为没写进去、于是重复写。
+      recentLog: log[log.length - 1] ?? '',
       // —— 度量模块（可删）：一次都没调过召回就是空串，不占地方
       metrics: metricsLine(this.root),
       bootPreview: boot,
@@ -1590,6 +1630,35 @@ export function apply(ctx, config = {}) {
       (args) => store.recall(args.query),
     ),
     textTool(
+      'mem_seq',
+      '按 seq 区间把会话原文读回来（自带，不依赖压缩插件）。记忆页里写着 seq 时用它取原文；seq 是会话内的编号，跨会话要带 session。返回 nextOffset 时用同一个区间加 offset 继续',
+      {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          from: { type: 'integer', minimum: 0 },
+          to: { type: 'integer', minimum: 0 },
+          session: { type: 'string', maxLength: 80 },
+        },
+        required: ['from', 'to'],
+      },
+      (args) => {
+        const result = readSeqRange({
+          from: args.from,
+          to: args.to,
+          session: String(args.session ?? '').trim() || String(store.activeSession ?? ''),
+        })
+        if (result.status !== 'ok') return result
+        return {
+          status: 'ok',
+          session: result.session,
+          events: result.events,
+          chars: result.chars,
+          text: result.text,
+        }
+      },
+    ),
+    textTool(
       'mem_log',
       '向记忆库的 log.md 追加一条带日期的经历或决定记录。只写真实发生且值得跨会话保留的事，标题一句话。知道这事出自哪段对话时，把 source 填上（例如 seq 13946-13981），以后能按编号翻回原话',
       {
@@ -1606,7 +1675,7 @@ export function apply(ctx, config = {}) {
     ),
     textTool(
       'mem_page',
-      '向记忆库中某个页面末尾追加一段补充（页面必须是记忆根内的 .md 相对路径，例如 skills/foo.md）。知道这段出自哪段对话时，把 source 填上（例如 seq 13946-13981）。新建页时填 origin 标清这段是怎么来的：stated 是主人亲口说的、observed 是自己查证过的、inferred 是推出来的；推断和事实不分开，以后就分不清了。旧页不加这个标签',
+      '向记忆库中某个页面末尾追加一段补充（页面必须是记忆根内的 .md 相对路径，例如 skills/foo.md）。source 必填（写页必须能指回原文）：填 seq 区间，例如 seq 13946-13981；确实没有 seq 的写「无 seq：原因」。新建页时填 origin 标清这段是怎么来的：stated 是主人亲口说的、observed 是自己查证过的、inferred 是推出来的；推断和事实不分开，以后就分不清了。旧页不加这个标签',
       {
         type: 'object',
         additionalProperties: false,

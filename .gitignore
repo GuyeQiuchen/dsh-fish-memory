@@ -5,3 +5,4 @@ loaded.txt
 load-error.txt
 index.full.js*
 .DS_Store
+*.tgz

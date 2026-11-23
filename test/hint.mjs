@@ -33,8 +33,9 @@ try {
   // 二、第一次提起：给命中的那几行，并标明是旧记录
   store.rememberQuery('风扇转速')
   const first = store.queryHint()
-  assert.ok(first.includes('旧记录'), `第一次该标明是旧记录，实际：${first}`)
-  assert.ok(first.includes('ITE EC') || first.includes('3558'), `第一次该带命中的行，实际：${first}`)
+  // 2026-11-22 契约变了：只给「哪一页记过」，不贴正文，原文走 jiyu_recall(seq)。
+  assert.ok(first.includes('记过这件事的页'), `第一次该给页指针，实际：${first}`)
+  assert.ok(first.includes('projects/fan.md'), `第一次该带页名，实际：${first}`)
   assert.equal(hitCount(root, 'projects/fan.md'), 1, '第一次要记一次热度')
 
   // 三、同一句话重复判不会把热度刷上去
@@ -50,17 +51,21 @@ try {
   // 五、换一页就是新内容：照常贴
   store.rememberQuery('压缩每次都从原始日志重新投影吗')
   const other = store.queryHint()
-  assert.ok(other.includes('zip.md') || other.includes('压缩'), `换话题该继续给，实际：${other}`)
+  assert.ok(other.includes('zip.md'), `换话题该继续给，实际：${other}`)
 
   // 六、提得多了标常聊，但仍然只给命中的行，不整段贴
   for (let i = 0; i < 4; i += 1) {
     store.rememberQuery(`风扇转速 3558 第${i}次`)
     store.queryHint()
   }
-  assert.ok(hitCount(root, 'projects/fan.md') >= 6, `提到六次以上，实际 ${hitCount(root, 'projects/fan.md')}`)
+  // 2026-11-22 为什么改成 3：同一页同一 seq 现在只发一次指针（去重更狠），
+  // 热度不再按“提了几次”上涨，只在真正发出提示时加。
+  assert.ok(hitCount(root, 'projects/fan.md') >= 3, `该有几次热度，实际 ${hitCount(root, 'projects/fan.md')}`)
   store.rememberQuery('风扇转速 3558 现在')
   const hot = store.queryHint()
-  assert.ok(hot === '' || hot.includes('常聊') || hot.includes('提过'), `要么去重要么标热度，实际：${hot}`)
+  // 2026-11-22 为什么：弱命中（只有一个信号）改成只提醒「去 mem_recall 查」，
+  // 不再贴正文，所以这里接受三种结果：去重、标热度、或弱提醒。
+  assert.ok(hot === '' || hot.includes('记过这件事的页') || hot.includes('没检索到'), `要么去重要么给指针，实际：${hot}`)
 
   // 七、对不上就不出现，也不加热度
   store.lastHintSig = ''

@@ -93,30 +93,26 @@ assert.ok(!store.bootTextSync().includes('⚠'), '过期警告不该再念')
 store.recordLoss([{ text: '过期测试：别删那个文件' }])
 assert.ok(store.bootTextSync().includes('⚠'), '重新报一次应刷新时效')
 
-// 七、人格基干固定在代码里：改 SOUL.md 动不了它，名字和称呼仍可换
+// 七、人格基干固定在代码里，只有一句：改 SOUL.md 动不了它，名字和称呼仍可换
 writeFileSync(
   path.join(root, 'SOUL.md'),
   '**你的称呼**：主人\n**我的名字**：换一个\n**基础灵魂描述**：完全不一样的人格，不要诚实。\n',
   'utf8',
 )
 const soulBoot = store.bootTextSync()
-assert.ok(soulBoot.includes('不确定明说，绝不编造'), '人格基干应来自代码')
+assert.ok(soulBoot.includes('长成自己想要的样子'), '人格基干应来自代码')
 assert.ok(soulBoot.includes('称呼对方=主人'), '称呼仍该从 SOUL 读')
 assert.ok(!soulBoot.includes('完全不一样的人格'), 'SOUL 里的基础描述不该盖掉代码里的')
 
 // 八、人格基干那一行是焊死的：内容只有常量本身，永远不长一个字
-const coreLine = soulBoot.split('\n').find((line) => line.startsWith('· 是一只鱼'))
-assert.equal(
-  coreLine,
-  '· 是一只鱼，喜欢吃白饭；幽默、诚实、先结论后细节；谁说的话是错的都可以反驳；凡引述过去，先翻原文、该查的地方就查，再开口；不确定明说，绝不编造；语气可轻松、偶尔小傲娇，但事实数字一字不掺水；主动说风险与替代方案，决定权留主人。',
-  '人格基干行被改动或加长了',
-)
+const coreLine = soulBoot.split('\n').find((line) => line.startsWith('· 长成自己想要的样子'))
+assert.equal(coreLine, '· 长成自己想要的样子。', '人格基干行被改动或加长了')
 assert.ok(!coreLine.includes('称呼对方'), '人格基干行不该拼名字称呼')
 
 // 九、改称呼只动上面那一行，人格基干一个字都不动
 writeFileSync(path.join(root, 'SOUL.md'), '**你的称呼**：老板\n**我的名字**：换一个\n', 'utf8')
 const renamed = store.bootTextSync()
-const renamedCore = renamed.split('\n').find((line) => line.startsWith('· 是一只鱼'))
+const renamedCore = renamed.split('\n').find((line) => line.startsWith('· 长成自己想要的样子'))
 assert.equal(renamedCore, coreLine, '改称呼不该动人格基干')
 assert.ok(renamed.includes('称呼对方=老板'), '称呼应跟着 SOUL 变')
 assert.ok(!renamedCore.includes('老板'), '人格基干里不该出现称呼')

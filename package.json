@@ -1,40 +1,40 @@
 {
-    "name": "dsh-fish-memory",
-    "version": "0.5.2",
-    "type": "module",
-    "description": "Compact long-term memory for DeepSeek Harness sessions: compact boot block, separately budgeted house-rules and growth blocks with rule_add/rule_status so correction lessons persist, plus on-demand recall tools.",
-    "exports": {
-        ".": "./index.js",
-        "./locale/*.json": "./locale/*.json",
-        "./icon": "./icon.svg"
-    },
-    "files": [
-        "README.md",
-        "index.js",
-        "cordis.patch.yml",
-        "locale/*.json",
-        "docs",
-        "icon.svg",
-        "LICENSE",
-        "lib",
-        "test",
-        "install.sh",
-        "uninstall.sh",
-        "install.ps1",
-        "uninstall.ps1"
-    ],
-    "dsh": {
-        "bundle": {
-            "patch": "./cordis.patch.yml"
-        }
-    },
-    "license": "MIT",
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/GuyeQiuchen/dsh-fish-memory.git"
-    },
-    "homepage": "https://github.com/GuyeQiuchen/dsh-fish-memory#readme",
-    "engines": {
-        "node": ">=20.11"
+  "name": "dsh-fish-memory",
+  "version": "0.5.9",
+  "type": "module",
+  "description": "Compact long-term memory for DeepSeek Harness sessions: compact boot block, separately budgeted house-rules and growth blocks with rule_add/rule_status so correction lessons persist, plus on-demand recall tools.",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "README.md",
+    "index.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs",
+    "icon.svg",
+    "LICENSE",
+    "lib",
+    "test",
+    "install.sh",
+    "uninstall.sh",
+    "install.ps1",
+    "uninstall.ps1"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
     }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GuyeQiuchen/dsh-fish-memory.git"
+  },
+  "homepage": "https://github.com/GuyeQiuchen/dsh-fish-memory#readme",
+  "engines": {
+    "node": ">=20.11"
+  }
 }

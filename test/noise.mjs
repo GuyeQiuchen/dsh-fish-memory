@@ -23,7 +23,7 @@ try {
 
   // 一、提示给出去，下一轮没人碰：记一次空转
   store.rememberQuery('风扇转速')
-  assert.ok(store.queryHint().includes('3558'), '该先给一次')
+  assert.ok(store.queryHint().includes('fan.md'), '该先给一次页指针')
   store.bootTextSync()
   assert.equal(readMetrics(root).hintIdle, 1, '没人碰该记空转')
   assert.equal(readMetrics(root).hintUsed, undefined, '还没用过')

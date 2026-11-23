@@ -13,6 +13,10 @@ const ctx = {
   tools: { register(def) { tools.push(def); return () => {} } },
 }
 
+// 2026-11-22 为什么：原来把 process.argv[2] 直接当记忆根，node --test 下它是测试文件名，
+// 解析后落到真实记忆根；实测会改 metrics/mood，并把「刚整理过 / 刚写过日记」的提醒冲掉。
+// 现在默认 mkdtemp，只有显式传入 tmp 路径时才用（便于手工指定）。
+// 验：node --test（smoke.mjs 不再触碰 ~/.dsh/memory）
 // 冒烟测试必须写临时目录：node --test 下 argv[2] 是测试文件名，
 // 直接传给 apply 会落到真实记忆根，把「刚整理过 / 刚写过日记」的提醒冲掉。
 const root = process.argv[2] && process.argv[2].includes('tmp') ? process.argv[2] : mkdtempSync(path.join(tmpdir(), 'fish-memory-smoke-'))

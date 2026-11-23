@@ -37,12 +37,15 @@ try {
   store.rememberQuery('风扇 转速')
   const hint = store.queryHint()
   assert.ok(hint.includes('风扇') || hint.includes('projects/fan.md'), `该命中硬信息页，实际：${hint}`)
-  assert.ok(hint.includes('3400'), `该把正文带出来，实际：${hint}`)
+  // 2026-11-22 契约变了：不再贴正文，只给页指针 + seq（原文走 jiyu_recall）。
+  // 硬信息的作用变成「页里有没有值得翻回去的东西」，由 hasHardInfo 决定要不要提醒。
+  assert.ok(hint.includes('原文') || hint.includes('mem_recall'), `该给出怎么取原文，实际：${hint}`)
+  assert.ok(!hint.includes('3400'), `不该再贴正文，实际：${hint}`)
 
   const quiet = new Store(root, {})
   quiet.rememberQuery('今天有点沉 心情')
   const hint2 = quiet.queryHint()
-  assert.ok(!hint2.includes('第二行'), `没有硬信息的页不该摊正文，实际：${hint2}`)
+  assert.ok(!hint2.includes('第二行'), `不该贴正文，实际：${hint2}`)
 } finally {
   rmSync(root, { recursive: true, force: true })
 }
