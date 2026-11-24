@@ -42,7 +42,7 @@ if ($pkg.dependencies) {
 if ($pkg.dsh -and $pkg.dsh.profile -and $pkg.dsh.profile.bundles) {
   $pkg.dsh.profile.bundles = @($pkg.dsh.profile.bundles | Where-Object { $_ -ne 'dsh-fish-memory' })
 }
-$pkg | ConvertTo-Json -Depth 20 | Set-Content $pkgPath -Encoding UTF8
+[System.IO.File]::WriteAllText($pkgPath, ($pkg | ConvertTo-Json -Depth 20), (New-Object System.Text.UTF8Encoding($false)))
 Write-Host "package.json cleaned"
 
 $patch = [System.IO.File]::ReadAllText($patchPath, [System.Text.Encoding]::UTF8)

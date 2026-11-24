@@ -76,7 +76,7 @@ if ($bundles -notcontains 'dsh-fish-memory') {
   $pkg.dsh.profile.bundles = $bundles
   Write-Host "bundle: dsh-fish-memory added"
 }
-$pkg | ConvertTo-Json -Depth 20 | Set-Content $pkgPath -Encoding UTF8
+[System.IO.File]::WriteAllText($pkgPath, ($pkg | ConvertTo-Json -Depth 20), (New-Object System.Text.UTF8Encoding($false)))
 
 # cordis.patch.yml: 不再插条目——包自带的 cordis.patch.yml（bundle）已经插入
 # fish-memory 行；再插一份会和它重复，DSH 对重复 id 会报冲突。

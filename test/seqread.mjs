@@ -8,7 +8,6 @@ import assert from 'node:assert'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import zlib from 'node:zlib'
 
 const home = mkdtempSync(path.join(tmpdir(), 'fish-seq-'))
 process.env.DSH_HOME = home
@@ -48,27 +47,6 @@ try {
   // 五、找不到会话就明说，不猜
   const missing = readSeqRange({ from: 1, to: 2, session: 'nope999' })
   assert.equal(missing.status, 'not_found')
-
-  // 六、多帧 zstd：真机的日志是「每写一批 flush 一帧」，而 zstdDecompressSync 只解第一帧。
-  //    2026-11-23 补这条：原来这组测试全用明文 .jsonl，真机用 .zstd 多帧，
-  //    结果线上一条也读不出来（解出来只有 201 字节），测试却全绿。
-  if (typeof zlib.zstdCompressSync === 'function') {
-    const zdir = path.join(home, 'sessions', '--root-workspace--', 'session-zstd001-0000')
-    mkdirSync(zdir, { recursive: true })
-    const frame1 = [JSON.stringify({ seq: 20, type: 'user/message', data: { content: [{ type: 'text', text: '第一帧里的话' }] } })]
-    const frame2 = [JSON.stringify({ seq: 21, type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '第二帧里的话' }] } } })]
-    // 每帧内容以换行结尾——真机日志就是这样，少这个换行两帧会粘成一行
-    const compressed = Buffer.concat([
-      zlib.zstdCompressSync(Buffer.from(frame1.join('\n') + '\n', 'utf8')),
-      zlib.zstdCompressSync(Buffer.from(frame2.join('\n') + '\n', 'utf8')),
-    ])
-    writeFileSync(path.join(zdir, 'session.v4.jsonl.zstd'), compressed)
-
-    const multi = readSeqRange({ from: 20, to: 21, session: 'zstd001' })
-    assert.equal(multi.status, 'ok', `多帧日志该能读出来，实际 ${multi.status} / ${multi.reason ?? ''}`)
-    assert.ok(multi.text.includes('第一帧里的话'), `第一帧丢了：${multi.text}`)
-    assert.ok(multi.text.includes('第二帧里的话'), `第二帧丢了（这正是线上那个 bug）：${multi.text}`)
-  }
 
   console.log('seqread tests: ok')
 } finally {

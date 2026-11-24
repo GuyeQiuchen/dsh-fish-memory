@@ -6,3 +6,4 @@ load-error.txt
 index.full.js*
 .DS_Store
 *.tgz
+*.0.6.3-orig

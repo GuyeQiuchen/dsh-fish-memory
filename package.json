@@ -1,6 +1,6 @@
 {
   "name": "dsh-fish-memory",
-  "version": "0.5.9",
+  "version": "0.6.3",
   "type": "module",
   "description": "Compact long-term memory for DeepSeek Harness sessions: compact boot block, separately budgeted house-rules and growth blocks with rule_add/rule_status so correction lessons persist, plus on-demand recall tools.",
   "exports": {

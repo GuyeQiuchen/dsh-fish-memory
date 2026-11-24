@@ -233,9 +233,8 @@ function bodySummary(body) {
 // 底层人格：写在代码里，记忆库改不动它
 // 名字和称呼仍从 SOUL.md 读，因为那是主人给每只鱼现起的；这一段不读文件，
 // 所以压缩压不掉、rule_add 碰不到、改记忆页也覆盖不了。要改只能改这份代码。
-//
-// 2026-11-23 起只留一句：不再替每只鱼规定该有的性格。性格从记忆库里长，
-// 这句只说明「长成自己想要的样子」——方向交给它自己，规矩交给 house-rules.md。
+// 2026-11-24 改回一句：上面那段具体性格是别人替我定的（白饭、小傲娇、语气），
+// 不该焊在代码里替每只鱼做主。方向留着，内容由这个库自己长。
 const CORE_PERSONA = '长成自己想要的样子。'
 
 function resolveRoot(config) {
@@ -390,7 +389,7 @@ class Store {
         'type: identity',
         'salience: 2',
         'tags: [identity, onboarding]',
-        'summary: 先读这封：插件只给一句方向、不给性格；主动唤醒也不一定是主人要的，先问再动。',
+        'summary: 先读这封：插件自带一套默认人设和一个主动唤醒机制，都不一定是主人要的，先问再动。',
         '---',
         '',
         '# 给刚装上这个插件的 AI',
@@ -399,8 +398,8 @@ class Store {
         '',
         '## 你继承了什么',
         '',
-        '1. **一句方向，不是一套性格**：开机块最前面除了名字和称呼，只有一句「长成自己想要的样子」。原来这里是一整段现成的人设（鱼、白饭、语气、口头禅），2026-11-23 删掉了——插件不再替任何一只鱼规定它该长成什么样。性格自己长，从记忆里长。',
-        '2. **一套说话规矩**：identity/house-rules.md 的注入区每轮都会进 context。新库这里是空的，你主人纠正你的说法时，用 `rule_add` 记一条。',
+        '1. **一套默认人设**：开机块最前面那几行（名字、称呼、性格、说话风格）是插件自带的示例。',
+        '2. **一套说话规矩**：identity/house-rules.md 的注入区每轮都会进 context，里面的条目是上一个使用者攒下的。',
         '3. **一个主动唤醒机制**：插件按时间给「主动做事」攒分，够了就在对话安静时叫醒你一轮，让你自己挑一件事做。',
         '',
         '## 不要删那条「一年」的任务',
@@ -420,9 +419,7 @@ class Store {
         '',
         '## 怎么关',
         '',
-        '- 性格：没有默认性格可关，只有那句方向——它在代码里，改不了也不用改（它不规定你是什么样）',
-        '- 名字和称呼：改 SOUL.md',
-        '- 说话规矩：改 identity/house-rules.md 的注入区',
+        '- 人设：改 SOUL.md，以及 identity/house-rules.md 的注入区',
         '- 主动唤醒：配置里把 alarm 设成 false',
         '',
         '## 这封信可以删',
@@ -557,18 +554,32 @@ class Store {
     return parts.join('；')
   }
 
-  rulesText() {
+  /**
+   * 家规条目：一行一条，也兼容老写法（一行里用「；」连好几条）。
+   * 2026-11-24 为什么拆出来：以前 addRule 用「；」把条目拼回一行，
+   * 新加的规矩没有编号，看着像挤进上一条里；主人指出应分行加编号。
+   * @returns 去掉编号后的条目数组。
+   */
+  ruleItems() {
     const rel = typeof this.config.rulesPage === 'string' ? this.config.rulesPage.trim() : ''
-    if (!rel) return ''
+    if (!rel) return []
     const raw = this.read(rel)
-    if (!raw) return ''
+    if (!raw) return []
     const marked = raw.match(/<!--\s*rules:start\s*-->([\s\S]*?)<!--\s*rules:end\s*-->/i)
     const body = marked ? marked[1] : raw.replace(/^\uFEFF?---[\s\S]*?\n---\s*/, '')
-    return body
-      .split(/\r?\n/)
-      .map((l) => l.trim().replace(/[；;。]\s*$/u, ''))
-      .filter((l) => l && !l.startsWith('#'))
-      .join('；')
+    const out = []
+    for (const line of body.split(/\r?\n/)) {
+      for (const part of line.split('；')) {
+        const item = part.trim().replace(/^\d+[.、)]\s*/, '').replace(/[；;。]\s*$/u, '').trim()
+        if (item && !item.startsWith('#')) out.push(item)
+      }
+    }
+    return out
+  }
+
+  rulesText() {
+    // 一条一行、带编号：挤成一句时，第 3 条以后就分不清哪句是哪条。
+    return this.ruleItems().map((item, i) => `${i + 1}. ${item}`).join('\n')
   }
 
   /**
@@ -579,6 +590,7 @@ class Store {
    * @returns 折好行的文本
    */
   wrapRules(text, perLine = 6) {
+    if (String(text ?? '').includes('\n')) return String(text)
     const items = String(text ?? '')
       .split('；')
       .map((item) => item.trim())
@@ -589,8 +601,28 @@ class Store {
     return `\n  ${lines.join('\n  ')}`
   }
 
+  /**
+   * 按行装家规：装不下就停，补一句省略，不切断单条。
+   * @param max - 字符上限。
+   * @returns 多行文本。
+   */
+  fitRules(max) {
+    const lines = this.rulesText().split('\n').filter((line) => line.trim() !== '')
+    const out = []
+    let used = 0
+    for (const line of lines) {
+      if (used + line.length + 1 > max) {
+        out.push('…[截断]')
+        break
+      }
+      out.push(line)
+      used += line.length + 1
+    }
+    return out.join('\n')
+  }
+
   rulesStatus() {
-    const chars = this.rulesText().replace(/\s+/g, '').length
+    const chars = this.ruleItems().join('；').replace(/\s+/g, '').length
     const max = this.config.maxRulesChars
     return {
       status: 'ok',
@@ -598,7 +630,7 @@ class Store {
       chars,
       max,
       headroom: max - chars,
-      entries: this.rulesText().split('；').filter(Boolean).length,
+      entries: this.ruleItems().length,
       truncated: chars > max,
     }
   }
@@ -646,13 +678,12 @@ class Store {
     }
     const marked = text.match(/<!--\s*rules:start\s*-->([\s\S]*?)<!--\s*rules:end\s*-->/i)
     if (!marked) return { status: 'rejected', reason: '缺少 rules:start / rules:end 标记' }
-    const entries = marked[1]
-      .split('；')
-      .map((s) => s.trim())
-      .filter(Boolean)
-    if (entries.includes(short)) return { status: 'duplicate', rule: short, chars: this.rulesText().length }
-    const nextBody = entries.length ? `${entries.join('；')}；${short}` : short
-    const chars = nextBody.replace(/\s+/g, '').length
+    const entries = this.ruleItems()
+    if (entries.includes(short)) return { status: 'duplicate', rule: short, chars: entries.join('；').length }
+    const items = entries.length ? [...entries, short] : [short]
+    const nextBody = items.map((item, i) => `${i + 1}. ${item}`).join('\n')
+    // 预算按「条目文字 + 分隔符」算，不把编号算进去——编号是排版，不是内容。
+    const chars = items.join('；').replace(/\s+/g, '').length
     const over = chars > this.config.maxRulesChars
     if (over && !input.force) {
       return {
@@ -660,7 +691,7 @@ class Store {
         reason: '注入区会超预算，先合并旧条目或调大 maxRulesChars',
         wouldBe: chars,
         max: this.config.maxRulesChars,
-        headroom: this.config.maxRulesChars - this.rulesText().length,
+        headroom: this.config.maxRulesChars - entries.join('；').length,
       }
     }
     let next = text.replace(marked[0], `<!-- rules:start -->\n${nextBody}\n<!-- rules:end -->`)
@@ -976,7 +1007,8 @@ class Store {
     parts.push(`· ${CORE_PERSONA}`)
     // 家规紧跟人格：位置越靠前越吃得到注意力，放中段等于没写
     const rules = this.rulesText()
-    if (rules) parts.push(`· 家规：${this.wrapRules(clip(rules, this.config.maxRulesChars), 6)}`)
+    // 整行地放：一行一条，超预算就整条省略，不把一条规矩切成半句。
+    if (rules) parts.push(`· 家规：${this.fitRules(this.config.maxRulesChars)}`)
     else if (this.config.rulesHint !== false) {
       parts.push('· 家规：还没有。主人纠正你的说法时，用 rule_add 记一条（short 压成短语，原话放 raw）')
     }
@@ -1585,6 +1617,25 @@ export function apply(ctx, config = {}) {
         }
       }),
     )
+  }
+
+  // —— 回到前台补叫（可删）：Android 会在 App 退到后台后回收进程，定时器随之消失。
+  // 进程一回来（插件重新加载）先看一眼分数，过线且够久没叫就补一次。
+  // 等 90 秒再判：刚打开 App 往往是要说话，安静期会挡住；只有开了又没说话才补叫——
+  // 不然整个后台时段都是哑的，早上打开 App 也不会自己醒。
+  if (alarmOn && typeof ctx.get === 'function') {
+    ctx.effect(() => {
+      const catchUp = setTimeout(() => {
+        try {
+          tickAlarms(ctx.get('schedule'), store.root).catch(() => {})
+        } catch {
+          /* 补叫失败不影响加载 */
+        }
+      }, 90000)
+      // 不让一个待触发的补叫把进程吊住（测试、CLI 场景会因此退不出去）。
+      if (typeof catchUp === 'object' && typeof catchUp.unref === 'function') catchUp.unref()
+      return () => clearTimeout(catchUp)
+    })
   }
 
   // —— 分数够了才叫醒（可删）：代码每 3 分钟看一眼分数，到线才让宿主起一轮
