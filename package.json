@@ -1,6 +1,6 @@
 {
   "name": "dsh-jiyiti-memory",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "type": "module",
   "description": "Compact long-term memory for DeepSeek Harness sessions: compact boot block, separately budgeted house-rules and growth blocks with rule_add/rule_status so correction lessons persist, plus on-demand recall tools.",
   "exports": {

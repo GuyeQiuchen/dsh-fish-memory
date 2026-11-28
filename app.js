@@ -291,8 +291,8 @@ class Store {
     const soul = this.read('SOUL.md')
     // 名字和称呼随时会换，留给记忆库；人格基干不在这里拼，它单独一行、固定在代码里
     // 模板写的是「名字：」「称呼：」，老页可能带「我的名字**：」；两种都认
-    const nameMatch = soul ? soul.match(/^(?:我的)?名字\*{0,2}[：:]\s*(.+)$/m) : null
-    const callMatch = soul ? soul.match(/^(?:你的)?称呼\*{0,2}[：:]\s*(.+)$/m) : null
+    const nameMatch = soul ? soul.match(/^(?:[-*]\s*)?(?:\*\*)?(?:我的)?名字(?:\*\*)?[：:]\s*(.+)$/m) : null
+    const callMatch = soul ? soul.match(/^(?:[-*]\s*)?(?:\*\*)?(?:你的)?称呼(?:\*\*)?[：:]\s*(.+)$/m) : null
     const parts = []
     if (nameMatch) parts.push(`名字=${nameMatch[1].trim()}`)
     if (callMatch) parts.push(`称呼对方=${callMatch[1].trim()}`)
