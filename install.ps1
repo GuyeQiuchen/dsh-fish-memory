@@ -1,4 +1,4 @@
-# Install dsh-fish-memory into a DSH profile on Windows.
+# Install dsh-jiyiti-memory into a DSH profile on Windows.
 #
 # Why a copy instead of a junction or a link: the host only resolves
 # @deepseek-ai/* for packages that physically live in the profile. A junction
@@ -25,8 +25,8 @@ $pkgPath = Join-Path $profileDir 'package.json'
 $patchPath = Join-Path $profileDir 'cordis.patch.yml'
 $modDir = Join-Path $profileDir 'node_modules'
 $storeDir = Join-Path $profileDir 'local-packages'
-$storeCopy = Join-Path $storeDir 'dsh-fish-memory'
-$target = Join-Path $modDir 'dsh-fish-memory'
+$storeCopy = Join-Path $storeDir 'dsh-jiyiti-memory'
+$target = Join-Path $modDir 'dsh-jiyiti-memory'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
 if (-not (Test-Path $pkgPath)) { throw "profile not found: $pkgPath" }
@@ -64,19 +64,19 @@ Write-Host "copied: $here -> $target"
 $pkg = Get-Content $pkgPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if (-not $pkg.dependencies) { $pkg | Add-Member -NotePropertyName 'dependencies' -NotePropertyValue ([pscustomobject]@{}) }
 $deps = $pkg.dependencies
-if (-not ($deps.PSObject.Properties.Name -contains 'dsh-fish-memory')) {
-  $deps | Add-Member -NotePropertyName 'dsh-fish-memory' -NotePropertyValue "link:$($storeCopy -replace '\\','/')"
-  Write-Host "dep: dsh-fish-memory added"
+if (-not ($deps.PSObject.Properties.Name -contains 'dsh-jiyiti-memory')) {
+  $deps | Add-Member -NotePropertyName 'dsh-jiyiti-memory' -NotePropertyValue "link:$($storeCopy -replace '\\','/')"
+  Write-Host "dep: dsh-jiyiti-memory added"
 }
 if (-not $pkg.dsh) { $pkg | Add-Member -NotePropertyName 'dsh' -NotePropertyValue ([pscustomobject]@{}) }
 if (-not $pkg.dsh.profile) { $pkg.dsh | Add-Member -NotePropertyName 'profile' -NotePropertyValue ([pscustomobject]@{}) }
 $bundles = @($pkg.dsh.profile.bundles)
-if ($bundles -notcontains 'dsh-fish-memory') {
-  $bundles += 'dsh-fish-memory'
+if ($bundles -notcontains 'dsh-jiyiti-memory') {
+  $bundles += 'dsh-jiyiti-memory'
   $pkg.dsh.profile.bundles = $bundles
-  Write-Host "bundle: dsh-fish-memory added"
+  Write-Host "bundle: dsh-jiyiti-memory added"
 }
-[System.IO.File]::WriteAllText($pkgPath, ($pkg | ConvertTo-Json -Depth 20), (New-Object System.Text.UTF8Encoding($false)))
+$pkg | ConvertTo-Json -Depth 20 | Set-Content $pkgPath -Encoding UTF8
 
 # cordis.patch.yml: 不再插条目——包自带的 cordis.patch.yml（bundle）已经插入
 # fish-memory 行；再插一份会和它重复，DSH 对重复 id 会报冲突。

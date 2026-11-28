@@ -1,11 +1,11 @@
-# dsh-fish-memory — 紧凑记忆（给这条肥鱼）
+# dsh-jiyiti-memory — 紧凑记忆（给这条肥鱼）
 #
 # 只注入一个小 boot 块（默认 <= 1400 字符），细节靠 mem_recall 按需取。
 # 家规单独一块注入（rulesPage + maxRulesChars），不占人格行那 320 字符；
 # rule_add 写回时单条短语上限由 maxRuleChars 控制。
 - insert:
     - id: fish-memory
-      name: 'dsh-fish-memory'
+      name: 'dsh-jiyiti-memory'
       config:
         memoryRoot: ''
         bootMaxChars: 1400

@@ -1,6 +1,6 @@
 {
-  "name": "dsh-fish-memory",
-  "version": "0.6.3",
+  "name": "dsh-jiyiti-memory",
+  "version": "0.7.6",
   "type": "module",
   "description": "Compact long-term memory for DeepSeek Harness sessions: compact boot block, separately budgeted house-rules and growth blocks with rule_add/rule_status so correction lessons persist, plus on-demand recall tools.",
   "exports": {
@@ -11,6 +11,7 @@
   "files": [
     "README.md",
     "index.js",
+    "app.js",
     "cordis.patch.yml",
     "locale/*.json",
     "docs",
@@ -21,7 +22,9 @@
     "install.sh",
     "uninstall.sh",
     "install.ps1",
-    "uninstall.ps1"
+    "uninstall.ps1",
+    "tools/eval.mjs",
+    "tools/replay-survival.mjs"
   ],
   "dsh": {
     "bundle": {
@@ -31,9 +34,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/GuyeQiuchen/dsh-fish-memory.git"
+    "url": "git+https://github.com/GuyeQiuchen/dsh-jiyiti-memory.git"
   },
-  "homepage": "https://github.com/GuyeQiuchen/dsh-fish-memory#readme",
+  "homepage": "https://github.com/GuyeQiuchen/dsh-jiyiti-memory#readme",
   "engines": {
     "node": ">=20.11"
   }

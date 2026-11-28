@@ -1,4 +1,4 @@
-# Uninstall dsh-fish-memory from a DSH profile on Windows.
+# Uninstall dsh-jiyiti-memory from a DSH profile on Windows.
 #
 # Reverses install.ps1: removes the copied package, the dependency, the bundle
 # entry and the fish-memory patch block. Does not touch your memory files under
@@ -21,7 +21,7 @@ if (-not $userHome) { throw 'cannot resolve the user home directory' }
 $profileDir = Join-Path $userHome ('.dsh\profiles\' + $Profile)
 $pkgPath = Join-Path $profileDir 'package.json'
 $patchPath = Join-Path $profileDir 'cordis.patch.yml'
-$target = Join-Path $profileDir 'node_modules\dsh-fish-memory'
+$target = Join-Path $profileDir 'node_modules\dsh-jiyiti-memory'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
 if (-not (Test-Path $pkgPath)) { throw "profile not found: $pkgPath" }
@@ -37,12 +37,12 @@ if (Test-Path $target) {
 
 $pkg = Get-Content $pkgPath -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($pkg.dependencies) {
-  $pkg.dependencies.PSObject.Properties.Remove('dsh-fish-memory')
+  $pkg.dependencies.PSObject.Properties.Remove('dsh-jiyiti-memory')
 }
 if ($pkg.dsh -and $pkg.dsh.profile -and $pkg.dsh.profile.bundles) {
-  $pkg.dsh.profile.bundles = @($pkg.dsh.profile.bundles | Where-Object { $_ -ne 'dsh-fish-memory' })
+  $pkg.dsh.profile.bundles = @($pkg.dsh.profile.bundles | Where-Object { $_ -ne 'dsh-jiyiti-memory' })
 }
-[System.IO.File]::WriteAllText($pkgPath, ($pkg | ConvertTo-Json -Depth 20), (New-Object System.Text.UTF8Encoding($false)))
+$pkg | ConvertTo-Json -Depth 20 | Set-Content $pkgPath -Encoding UTF8
 Write-Host "package.json cleaned"
 
 $patch = [System.IO.File]::ReadAllText($patchPath, [System.Text.Encoding]::UTF8)
